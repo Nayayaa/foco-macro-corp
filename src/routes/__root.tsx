@@ -81,6 +81,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Brasil em Foco — Anatomia de Três Choques" },
+      { name: "twitter:description", content: "Dashboard macroeconômico e corporativo do Brasil 2014–2024." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/808cb3e8-a19b-4760-a7ec-8e99811fa7c7" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/808cb3e8-a19b-4760-a7ec-8e99811fa7c7" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
