@@ -7,7 +7,7 @@ import {
 import { useData } from "@/lib/useData";
 import { useFilters, inFilters } from "@/lib/filters";
 import { SHOCK_HEX, SHOCK_LABEL, fmtNum, fmtPct } from "@/lib/data";
-import { PageHeader, Kpi, Panel, Loading, ChartTooltip } from "@/components/ui-bits";
+import { PageHeader, Kpi, Panel, Loading, ChartTooltip, ErrorBoundary, NoData, hasData } from "@/components/ui-bits";
 
 export const Route = createFileRoute("/selic")({
   head: () => ({ meta: [
@@ -32,107 +32,116 @@ function Page() {
 
   const rows = useMemo(() => {
     if (!data) return [];
-    return data.selic.filter(r => inFilters(r, filters));
+    try { return data.selic.filter(r => inFilters(r, filters)); } catch (e) { console.error(e); return []; }
   }, [data, filters]);
 
-  if (!data) return <Loading />;
+  // Filter rows for spread/roic charts: drop rows where spread_roic_selic or roic_pct is null
+  const validSpreadRows = useMemo(
+    () => rows.filter(r => r.spread_roic_selic != null && !isNaN(Number(r.spread_roic_selic))),
+    [rows],
+  );
+  const validRoicRows = useMemo(
+    () => rows.filter(r => r.roic_pct != null && !isNaN(Number(r.roic_pct))),
+    [rows],
+  );
 
-  // KPI: avg Selic per regime, avg spread, avg D/EBITDA
-  const validSpread = rows.filter(r => r.spread_roic_selic != null);
-  const avgSpread = validSpread.length ? validSpread.reduce((a, r) => a + (r.spread_roic_selic ?? 0), 0) / validSpread.length : 0;
-  const validDE = rows.filter(r => r.divida_ebitda != null);
-  const avgDE = validDE.length ? validDE.reduce((a, r) => a + (r.divida_ebitda ?? 0), 0) / validDE.length : 0;
-  const validSelic = rows.filter(r => r.selic_meta_pct != null);
-  const avgSelic = validSelic.length ? validSelic.reduce((a, r) => a + (r.selic_meta_pct ?? 0), 0) / validSelic.length : 0;
+  // KPIs
+  const kpis = useMemo(() => {
+    try {
+      const validDE = rows.filter(r => r.divida_ebitda != null && !isNaN(Number(r.divida_ebitda)));
+      const validSelic = rows.filter(r => r.selic_meta_pct != null && !isNaN(Number(r.selic_meta_pct)));
+      const avgSpread = validSpreadRows.length ? validSpreadRows.reduce((a, r) => a + Number(r.spread_roic_selic ?? 0), 0) / validSpreadRows.length : 0;
+      const avgDE = validDE.length ? validDE.reduce((a, r) => a + Number(r.divida_ebitda ?? 0), 0) / validDE.length : 0;
+      const avgSelic = validSelic.length ? validSelic.reduce((a, r) => a + Number(r.selic_meta_pct ?? 0), 0) / validSelic.length : 0;
+      return { avgSpread, avgDE, avgSelic };
+    } catch (e) { console.error(e); return { avgSpread: 0, avgDE: 0, avgSelic: 0 }; }
+  }, [rows, validSpreadRows]);
+  const { avgSpread, avgDE, avgSelic } = kpis;
 
-  // Time series: avg selic & avg D/EBITDA per period
   const series = useMemo(() => {
-    const map = new Map<string, { periodo: string; selic: number; sN: number; de: number; deN: number }>();
-    rows.forEach(r => {
-      const cur = map.get(r.periodo) ?? { periodo: r.periodo, selic: 0, sN: 0, de: 0, deN: 0 };
-      if (r.selic_meta_pct != null) { cur.selic += r.selic_meta_pct; cur.sN += 1; }
-      if (r.divida_ebitda != null) { cur.de += r.divida_ebitda; cur.deN += 1; }
-      map.set(r.periodo, cur);
-    });
-    return Array.from(map.values())
-      .sort((a, b) => a.periodo.localeCompare(b.periodo))
-      .map(v => ({
-        periodo: v.periodo,
-        selic: v.sN ? v.selic / v.sN : null,
-        de: v.deN ? v.de / v.deN : null,
-      }));
-  }, [rows]);
-
-  // Scatter: Selic vs D/EBITDA, colored by shock
-  const scatterByShock = useMemo(() => {
-    const map = new Map<string, { x: number; y: number; empresa: string; periodo: string }[]>();
-    rows.forEach(r => {
-      if (r.selic_meta_pct == null || r.divida_ebitda == null) return;
-      const arr = map.get(r.choque_periodo) ?? [];
-      arr.push({ x: r.selic_meta_pct, y: r.divida_ebitda, empresa: r.empresa_nome, periodo: r.periodo });
-      map.set(r.choque_periodo, arr);
-    });
-    return Array.from(map.entries());
-  }, [rows]);
-
-  // Spread by company across regimes
-  const spreadByCompany = useMemo(() => {
-    const empresas = Array.from(new Set(rows.map(r => r.empresa_nome))).sort();
-    return empresas.map(emp => {
-      const o: Record<string, string | number> = { empresa: emp.split(" ")[0] };
-      REGIME_ORDER.forEach(reg => {
-        const subset = rows.filter(r => r.empresa_nome === emp && r.regime_selic === reg && r.spread_roic_selic != null);
-        o[reg] = subset.length ? subset.reduce((a, r) => a + (r.spread_roic_selic ?? 0), 0) / subset.length : 0;
+    try {
+      const map = new Map<string, { periodo: string; selic: number; sN: number; de: number; deN: number }>();
+      rows.forEach(r => {
+        const cur = map.get(r.periodo) ?? { periodo: r.periodo, selic: 0, sN: 0, de: 0, deN: 0 };
+        if (r.selic_meta_pct != null) { cur.selic += Number(r.selic_meta_pct); cur.sN += 1; }
+        if (r.divida_ebitda != null) { cur.de += Number(r.divida_ebitda); cur.deN += 1; }
+        map.set(r.periodo, cur);
       });
-      return o;
-    });
+      return Array.from(map.values())
+        .sort((a, b) => a.periodo.localeCompare(b.periodo))
+        .map(v => ({ periodo: v.periodo, selic: v.sN ? v.selic / v.sN : null, de: v.deN ? v.de / v.deN : null }));
+    } catch (e) { console.error(e); return []; }
   }, [rows]);
 
-  // ROIC vs Custo da Dívida — over time, aggregated avg
+  const scatterByShock = useMemo(() => {
+    try {
+      const map = new Map<string, { x: number; y: number; empresa: string; periodo: string }[]>();
+      rows.forEach(r => {
+        if (r.selic_meta_pct == null || r.divida_ebitda == null) return;
+        const arr = map.get(r.choque_periodo) ?? [];
+        arr.push({ x: Number(r.selic_meta_pct), y: Number(r.divida_ebitda), empresa: r.empresa_nome, periodo: r.periodo });
+        map.set(r.choque_periodo, arr);
+      });
+      return Array.from(map.entries());
+    } catch (e) { console.error(e); return []; }
+  }, [rows]);
+
+  const spreadByCompany = useMemo(() => {
+    try {
+      const empresas = Array.from(new Set(validSpreadRows.map(r => r.empresa_nome))).sort();
+      return empresas.map(emp => {
+        const o: Record<string, string | number> = { empresa: emp.split(" ")[0] };
+        REGIME_ORDER.forEach(reg => {
+          const subset = validSpreadRows.filter(r => r.empresa_nome === emp && r.regime_selic === reg);
+          o[reg] = subset.length ? subset.reduce((a, r) => a + Number(r.spread_roic_selic ?? 0), 0) / subset.length : 0;
+        });
+        return o;
+      });
+    } catch (e) { console.error(e); return []; }
+  }, [validSpreadRows]);
+
   const roicVsCost = useMemo(() => {
-    const map = new Map<string, { periodo: string; roic: number; rN: number; custo: number; cN: number }>();
-    rows.forEach(r => {
-      const cur = map.get(r.periodo) ?? { periodo: r.periodo, roic: 0, rN: 0, custo: 0, cN: 0 };
-      if (r.roic_pct != null && Math.abs(r.roic_pct) < 200) { cur.roic += r.roic_pct; cur.rN += 1; }
-      if (r.custo_implicito_divida_pct != null && Math.abs(r.custo_implicito_divida_pct) < 200) { cur.custo += r.custo_implicito_divida_pct; cur.cN += 1; }
-      map.set(r.periodo, cur);
-    });
-    return Array.from(map.values())
-      .sort((a, b) => a.periodo.localeCompare(b.periodo))
-      .map(v => ({
-        periodo: v.periodo,
-        roic: v.rN ? v.roic / v.rN : null,
-        custo: v.cN ? v.custo / v.cN : null,
-      }));
-  }, [rows]);
+    try {
+      const map = new Map<string, { periodo: string; roic: number; rN: number; custo: number; cN: number }>();
+      validRoicRows.forEach(r => {
+        const cur = map.get(r.periodo) ?? { periodo: r.periodo, roic: 0, rN: 0, custo: 0, cN: 0 };
+        if (r.roic_pct != null && Math.abs(Number(r.roic_pct)) < 200) { cur.roic += Number(r.roic_pct); cur.rN += 1; }
+        if (r.custo_implicito_divida_pct != null && Math.abs(Number(r.custo_implicito_divida_pct)) < 200) { cur.custo += Number(r.custo_implicito_divida_pct); cur.cN += 1; }
+        map.set(r.periodo, cur);
+      });
+      return Array.from(map.values())
+        .sort((a, b) => a.periodo.localeCompare(b.periodo))
+        .map(v => ({ periodo: v.periodo, roic: v.rN ? v.roic / v.rN : null, custo: v.cN ? v.custo / v.cN : null }));
+    } catch (e) { console.error(e); return []; }
+  }, [validRoicRows]);
 
-  // Heatmap: D/EBITDA by company × shock
   const empresas = useMemo(() => Array.from(new Set(rows.map(r => r.empresa_nome))).sort(), [rows]);
   const shocks = Object.keys(SHOCK_LABEL);
   const heat = useMemo(() => {
-    return empresas.map(emp => {
-      return {
+    try {
+      return empresas.map(emp => ({
         empresa: emp,
         cells: shocks.map(s => {
           const subset = rows.filter(r => r.empresa_nome === emp && r.choque_periodo === s && r.divida_ebitda != null);
-          return subset.length ? subset.reduce((a, r) => a + (r.divida_ebitda ?? 0), 0) / subset.length : null;
+          return subset.length ? subset.reduce((a, r) => a + Number(r.divida_ebitda ?? 0), 0) / subset.length : null;
         }),
-      };
-    });
-  }, [rows, empresas]);
+      }));
+    } catch (e) { console.error(e); return []; }
+  }, [rows, empresas, shocks]);
 
   const heatValues = heat.flatMap(r => r.cells.filter((v): v is number => v != null));
-  const heatMin = Math.min(...heatValues, 0);
-  const heatMax = Math.max(...heatValues, 1);
+  const heatMin = heatValues.length ? Math.min(...heatValues, 0) : 0;
+  const heatMax = heatValues.length ? Math.max(...heatValues, 1) : 1;
   const heatColor = (v: number | null) => {
     if (v == null) return "transparent";
     const t = Math.max(0, Math.min(1, (v - heatMin) / (heatMax - heatMin || 1)));
-    // green -> orange -> red
     const r = Math.round(0 + t * 233);
     const g = Math.round(212 - t * 137);
     const b = Math.round(170 - t * 110);
     return `rgb(${r},${g},${b})`;
   };
+
+  if (!data) return <Loading />;
 
   return (
     <div className="pb-16">
