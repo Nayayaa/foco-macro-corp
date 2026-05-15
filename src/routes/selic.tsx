@@ -238,38 +238,26 @@ function Page() {
             </div>
           </Panel>
 
-          <Panel title="Spread ROIC – Selic por Regime de Juros" subtitle="Por empresa, agrupado por regime Selic.">
-            <div className="h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={spreadByCompany} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>
-                  <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                  <XAxis dataKey="empresa" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} angle={-25} textAnchor="end" height={60} />
-                  <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                  <Tooltip content={<ChartTooltip formatter={(v) => fmtNum(v, 1)} />} />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
-                  <Bar dataKey="Selic_Baixa_4a8pct" name={REGIME_LABEL.Selic_Baixa_4a8pct} fill="#00D4AA" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="Selic_Mod_8a13pct" name={REGIME_LABEL.Selic_Mod_8a13pct} fill="#F2C94C" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="Selic_Alta_acima_13pct" name={REGIME_LABEL.Selic_Alta_acima_13pct} fill="#E94B3C" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Panel>
         </div>
 
         <Panel title="ROIC vs Custo Implícito da Dívida — Ao Longo do Tempo"
           subtitle="Quando o custo da dívida supera o ROIC, a empresa destrói valor.">
           <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={roicVsCost} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                <XAxis dataKey="periodo" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={3} />
-                <YAxis unit="%" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip formatter={(v) => fmtPct(v)} />} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="roic" name="ROIC %" stroke="#00D4AA" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="custo" name="Custo Implícito da Dívida %" stroke="#FF6B35" strokeWidth={2.5} dot={false} strokeDasharray="6 3" />
-              </ComposedChart>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              {hasData(roicVsCost) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={roicVsCost} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+                    <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                    <XAxis dataKey="periodo" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={3} />
+                    <YAxis unit="%" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => fmtPct(v)} />} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="roic" name="ROIC %" stroke="#00D4AA" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="custo" name="Custo Implícito da Dívida %" stroke="#FF6B35" strokeWidth={2.5} dot={false} strokeDasharray="6 3" />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : <NoData />}
+            </ErrorBoundary>
           </div>
         </Panel>
 
