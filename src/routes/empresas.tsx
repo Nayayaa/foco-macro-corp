@@ -8,7 +8,7 @@ import { useData } from "@/lib/useData";
 import { useFilters, inFilters } from "@/lib/filters";
 import { SECTOR_HEX, SHOCK_LABEL, fmtNum, fmtPct } from "@/lib/data";
 import type { FinRow } from "@/lib/data";
-import { PageHeader, Kpi, Panel, Loading, ChartTooltip } from "@/components/ui-bits";
+import { PageHeader, Kpi, Panel, Loading, ChartTooltip, ErrorBoundary, NoData, hasData } from "@/components/ui-bits";
 
 export const Route = createFileRoute("/empresas")({
   head: () => ({ meta: [
@@ -37,77 +37,85 @@ function Page() {
     return true;
   }), [allFin, filters, empresa, setor]);
 
-  if (!data) return <Loading />;
-
   // Current KPIs — last quarter of selected company (or aggregate)
-  const sortedByDate = [...filtered].sort((a, b) => a.data_referencia.localeCompare(b.data_referencia));
-  const lastQ = sortedByDate[sortedByDate.length - 1];
-  const lastForCompany = empresa === "ALL"
-    ? null
-    : sortedByDate.filter(r => r.empresa_nome === empresa).slice(-1)[0];
-  const cur = lastForCompany ?? lastQ;
+  const sortedByDate = useMemo(() => [...filtered].sort((a, b) => a.data_referencia.localeCompare(b.data_referencia)), [filtered]);
+  const cur = useMemo(() => {
+    const lastQ = sortedByDate[sortedByDate.length - 1];
+    const lastForCompany = empresa === "ALL" ? null : sortedByDate.filter(r => r.empresa_nome === empresa).slice(-1)[0];
+    return lastForCompany ?? lastQ ?? null;
+  }, [sortedByDate, empresa]);
 
   // Receita & EBITDA evolution per quarter — for selected company or all aggregated
   const revenueSeries = useMemo(() => {
-    const rows = filtered.filter(r => r.receita_liquida != null || r.ebitda != null);
-    const map = new Map<string, { periodo: string; receita: number; ebitda: number; n: number }>();
-    rows.forEach(r => {
-      const cur = map.get(r.periodo) ?? { periodo: r.periodo, receita: 0, ebitda: 0, n: 0 };
-      cur.receita += r.receita_liquida ?? 0;
-      cur.ebitda += r.ebitda ?? 0;
-      cur.n += 1;
-      map.set(r.periodo, cur);
-    });
-    return Array.from(map.values()).sort((a, b) => a.periodo.localeCompare(b.periodo));
+    try {
+      const rows = filtered.filter(r => r.receita_liquida != null || r.ebitda != null);
+      const map = new Map<string, { periodo: string; receita: number; ebitda: number; n: number }>();
+      rows.forEach(r => {
+        const c = map.get(r.periodo) ?? { periodo: r.periodo, receita: 0, ebitda: 0, n: 0 };
+        c.receita += Number(r.receita_liquida) || 0;
+        c.ebitda += Number(r.ebitda) || 0;
+        c.n += 1;
+        map.set(r.periodo, c);
+      });
+      return Array.from(map.values()).sort((a, b) => a.periodo.localeCompare(b.periodo));
+    } catch (e) { console.error(e); return []; }
   }, [filtered]);
 
   // Margins by shock — average across companies grouped by shock
   const marginsByShock = useMemo(() => {
-    const groups = new Map<string, { n: number; ebitda: number; liq: number }>();
-    filtered.forEach(r => {
-      const g = groups.get(r.choque_periodo) ?? { n: 0, ebitda: 0, liq: 0 };
-      if (r.margem_ebitda_pct != null) { g.ebitda += r.margem_ebitda_pct; g.n += 1; }
-      if (r.margem_liquida_pct != null) { g.liq += r.margem_liquida_pct; }
-      groups.set(r.choque_periodo, g);
-    });
-    return Array.from(groups.entries()).map(([k, v]) => ({
-      choque: SHOCK_LABEL[k] ?? k,
-      margem_ebitda: v.n ? v.ebitda / v.n : 0,
-      margem_liquida: v.n ? v.liq / v.n : 0,
-    }));
+    try {
+      const groups = new Map<string, { n: number; ebitda: number; liq: number; nLiq: number }>();
+      filtered.forEach(r => {
+        const g = groups.get(r.choque_periodo) ?? { n: 0, ebitda: 0, liq: 0, nLiq: 0 };
+        if (r.margem_ebitda_pct != null && !isNaN(Number(r.margem_ebitda_pct))) { g.ebitda += Number(r.margem_ebitda_pct); g.n += 1; }
+        if (r.margem_liquida_pct != null && !isNaN(Number(r.margem_liquida_pct))) { g.liq += Number(r.margem_liquida_pct); g.nLiq += 1; }
+        groups.set(r.choque_periodo, g);
+      });
+      return Array.from(groups.entries()).map(([k, v]) => ({
+        choque: SHOCK_LABEL[k] ?? k,
+        margem_ebitda: v.n ? v.ebitda / v.n : 0,
+        margem_liquida: v.nLiq ? v.liq / v.nLiq : 0,
+      }));
+    } catch (e) { console.error(e); return []; }
   }, [filtered]);
 
-  // ROE/ROA by company — average over filtered period
+  // ROE/ROA by company
   const roeRoaByCompany = useMemo(() => {
-    const groups = new Map<string, { n: number; roe: number; roa: number }>();
-    filtered.forEach(r => {
-      const g = groups.get(r.empresa_nome) ?? { n: 0, roe: 0, roa: 0 };
-      if (r.roe_pct != null) g.roe += r.roe_pct;
-      if (r.roa_pct != null) g.roa += r.roa_pct;
-      g.n += 1;
-      groups.set(r.empresa_nome, g);
-    });
-    return Array.from(groups.entries()).map(([nome, g]) => ({
-      empresa: nome.split(" ")[0],
-      roe: g.n ? g.roe / g.n : 0,
-      roa: g.n ? g.roa / g.n : 0,
-    })).sort((a, b) => b.roe - a.roe);
+    try {
+      const groups = new Map<string, { n: number; roe: number; roa: number }>();
+      filtered.forEach(r => {
+        const g = groups.get(r.empresa_nome) ?? { n: 0, roe: 0, roa: 0 };
+        if (r.roe_pct != null && !isNaN(Number(r.roe_pct))) g.roe += Number(r.roe_pct);
+        if (r.roa_pct != null && !isNaN(Number(r.roa_pct))) g.roa += Number(r.roa_pct);
+        g.n += 1;
+        groups.set(r.empresa_nome, g);
+      });
+      return Array.from(groups.entries()).map(([nome, g]) => ({
+        empresa: nome.split(" ")[0],
+        roe: g.n ? g.roe / g.n : 0,
+        roa: g.n ? g.roa / g.n : 0,
+      })).sort((a, b) => b.roe - a.roe);
+    } catch (e) { console.error(e); return []; }
   }, [filtered]);
 
   // Scatter EBITDA vs Divida_Liquida
   const scatterData = useMemo(() => {
-    const map = new Map<string, { empresa: string; setor: string; ebitda: number; divida: number; n: number }>();
-    filtered.forEach(r => {
-      if (r.ebitda == null || r.divida_liquida == null) return;
-      const cur = map.get(r.empresa_nome) ?? { empresa: r.empresa_nome, setor: r.setor, ebitda: 0, divida: 0, n: 0 };
-      cur.ebitda += r.ebitda; cur.divida += r.divida_liquida; cur.n += 1;
-      map.set(r.empresa_nome, cur);
-    });
-    return Array.from(map.values()).map(v => ({
-      empresa: v.empresa, setor: v.setor,
-      ebitda: v.n ? v.ebitda / v.n / 1000 : 0,   // R$ milhões
-      divida: v.n ? v.divida / v.n / 1000 : 0,
-    }));
+    try {
+      const map = new Map<string, { empresa: string; setor: string; ebitda: number; divida: number; n: number }>();
+      filtered.forEach(r => {
+        if (r.ebitda == null || r.divida_liquida == null) return;
+        const eb = Number(r.ebitda), dv = Number(r.divida_liquida);
+        if (isNaN(eb) || isNaN(dv)) return;
+        const c = map.get(r.empresa_nome) ?? { empresa: r.empresa_nome, setor: r.setor, ebitda: 0, divida: 0, n: 0 };
+        c.ebitda += eb; c.divida += dv; c.n += 1;
+        map.set(r.empresa_nome, c);
+      });
+      return Array.from(map.values()).map(v => ({
+        empresa: v.empresa, setor: v.setor,
+        ebitda: v.n ? v.ebitda / v.n / 1000 : 0,
+        divida: v.n ? v.divida / v.n / 1000 : 0,
+      }));
+    } catch (e) { console.error(e); return []; }
   }, [filtered]);
 
   const bySector = useMemo(() => {
@@ -118,6 +126,8 @@ function Page() {
     });
     return Array.from(map.entries());
   }, [scatterData]);
+
+  if (!data) return <Loading />;
 
   return (
     <div className="pb-16">
