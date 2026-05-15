@@ -141,6 +141,8 @@ function Page() {
     } catch (e) { console.error(e); return []; }
   }, [cleanAll, empresas, compYears]);
 
+  const COMPANY_COLORS = ["#FF6B35", "#00D4AA", "#F2C94C", "#9B5DE5", "#56CCF2", "#E94B3C", "#6FCF97", "#F2994A", "#BB6BD9"];
+
   if (!data) return <Loading />;
 
   return (
@@ -170,21 +172,25 @@ function Page() {
         <Panel title="Preço de Fechamento — Evolução"
           subtitle={empresa === "ALL" ? "Todas as empresas." : empresa}>
           <div className="h-[340px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={priceSeries as any[]} margin={{ top: 10, right: 16, bottom: 0, left: -10 }}>
-                <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                <XAxis dataKey="date" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={11} />
-                <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip formatter={(v) => `R$ ${fmtNum(v, 2)}`} />} />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-                {empresa === "ALL"
-                  ? empresas.map((e, i) => (
-                      <Line key={e} type="monotone" dataKey={e} name={e.split(" ")[0]} stroke={COMPANY_COLORS[i % COMPANY_COLORS.length]}
-                        strokeWidth={1.6} dot={false} connectNulls />
-                    ))
-                  : <Line type="monotone" dataKey="preco" name={empresa} stroke="#FF6B35" strokeWidth={2.5} dot={false} />}
-              </LineChart>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              {hasData(priceSeries as any[]) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={priceSeries as any[]} margin={{ top: 10, right: 16, bottom: 0, left: -10 }}>
+                    <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                    <XAxis dataKey="date" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={11} />
+                    <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => `R$ ${fmtNum(v, 2)}`} />} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    {empresa === "ALL"
+                      ? empresas.map((e, i) => (
+                          <Line key={e} type="monotone" dataKey={e} name={e.split(" ")[0]} stroke={COMPANY_COLORS[i % COMPANY_COLORS.length]}
+                            strokeWidth={1.6} dot={false} connectNulls />
+                        ))
+                      : <Line type="monotone" dataKey="preco" name={empresa} stroke="#FF6B35" strokeWidth={2.5} dot={false} />}
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : <NoData />}
+            </ErrorBoundary>
           </div>
         </Panel>
 
