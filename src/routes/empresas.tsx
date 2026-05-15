@@ -253,41 +253,8 @@ function Page() {
             </ErrorBoundary>
           </div>
         </Panel>
-
-
-        <Panel title="EBITDA × Dívida Líquida (médias por empresa)" subtitle="Cor por setor. Cada ponto representa uma empresa.">
-          <div className="h-[360px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                <XAxis dataKey="ebitda" name="EBITDA (R$ mi)" type="number"
-                  tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
-                  label={{ value: "EBITDA médio (R$ milhões)", fill: "var(--color-muted-foreground)", fontSize: 11, position: "insideBottom", offset: -2 }} />
-                <YAxis dataKey="divida" name="Dívida Líquida (R$ mi)" type="number"
-                  tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                <ZAxis dataKey="empresa" range={[120, 120]} />
-                <Tooltip cursor={{ strokeDasharray: "3 3" }}
-                  content={({ active, payload }: any) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0].payload;
-                    return (
-                      <div className="bg-[oklch(0.18_0.04_250/0.95)] border border-border/60 rounded-md px-3 py-2 text-xs">
-                        <div className="font-semibold">{d.empresa}</div>
-                        <div className="text-muted-foreground">{d.setor}</div>
-                        <div>EBITDA: R$ {fmtNum(d.ebitda, 0)} mi</div>
-                        <div>Dívida Líq.: R$ {fmtNum(d.divida, 0)} mi</div>
-                      </div>
-                    );
-                  }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                {bySector.map(([sector, points]) => (
-                  <Scatter key={sector} name={sector} data={points} fill={SECTOR_HEX[sector] ?? "#888"} />
-                ))}
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
       </div>
+
     </div>
   );
 }
