@@ -39,12 +39,29 @@ const SHOCK_BY_DATE = (date: string): string => {
 };
 
 async function fetchCsv<T = Record<string, unknown>>(url: string): Promise<T[]> {
-  const res = await fetch(url);
-  const text = await res.text();
-  const parsed = Papa.parse<T>(text.replace(/^\uFEFF/, ""), {
-    header: true, dynamicTyping: true, skipEmptyLines: true,
-  });
-  return parsed.data as T[];
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`Failed to fetch ${url}: ${res.status}`);
+      return [];
+    }
+    const text = await res.text();
+    const parsed = Papa.parse<T>(text.replace(/^\uFEFF/, ""), {
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      transform: (value) => {
+        // Empty strings → null so they never get parsed as 0 or NaN downstream
+        if (value === "" || value === "indisponivel" || value === "NA" || value === "N/A") return null as unknown as string;
+        return value;
+      },
+    });
+    if (parsed.errors?.length) console.warn(`CSV parse warnings for ${url}:`, parsed.errors.slice(0, 3));
+    return (parsed.data as T[]).filter(Boolean);
+  } catch (e) {
+    console.error(`Error loading ${url}:`, e);
+    return [];
+  }
 }
 
 let cache: {
@@ -53,15 +70,21 @@ let cache: {
 
 export async function loadAll() {
   if (cache.macro && cache.fin && cache.selic && cache.mercado) return cache as Required<typeof cache>;
-  const [macro, fin, selic, mercado] = await Promise.all([
-    fetchCsv<MacroRow>("/data/macro.csv"),
-    fetchCsv<FinRow>("/data/financeiro.csv"),
-    fetchCsv<SelicRow>("/data/selic.csv"),
-    fetchCsv<MercadoRow>("/data/mercado.csv"),
-  ]);
-  macro.forEach(r => { r.choque_periodo = SHOCK_BY_DATE(r.Date); });
-  cache = { macro, fin, selic, mercado };
-  return cache as Required<typeof cache>;
+  try {
+    const [macro, fin, selic, mercado] = await Promise.all([
+      fetchCsv<MacroRow>("/data/macro.csv"),
+      fetchCsv<FinRow>("/data/financeiro.csv"),
+      fetchCsv<SelicRow>("/data/selic.csv"),
+      fetchCsv<MercadoRow>("/data/mercado.csv"),
+    ]);
+    macro.forEach(r => { try { if (r?.Date) r.choque_periodo = SHOCK_BY_DATE(r.Date); } catch { /* ignore */ } });
+    cache = { macro, fin, selic, mercado };
+    return cache as Required<typeof cache>;
+  } catch (e) {
+    console.error("loadAll failed:", e);
+    cache = { macro: [], fin: [], selic: [], mercado: [] };
+    return cache as Required<typeof cache>;
+  }
 }
 
 export const SHOCK_LABEL: Record<string, string> = {

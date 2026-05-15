@@ -8,7 +8,7 @@ import { useData } from "@/lib/useData";
 import { useFilters, inFilters } from "@/lib/filters";
 import { SECTOR_HEX, SHOCK_LABEL, fmtNum, fmtPct } from "@/lib/data";
 import type { FinRow } from "@/lib/data";
-import { PageHeader, Kpi, Panel, Loading, ChartTooltip } from "@/components/ui-bits";
+import { PageHeader, Kpi, Panel, Loading, ChartTooltip, ErrorBoundary, NoData, hasData } from "@/components/ui-bits";
 
 export const Route = createFileRoute("/empresas")({
   head: () => ({ meta: [
@@ -37,77 +37,85 @@ function Page() {
     return true;
   }), [allFin, filters, empresa, setor]);
 
-  if (!data) return <Loading />;
-
   // Current KPIs — last quarter of selected company (or aggregate)
-  const sortedByDate = [...filtered].sort((a, b) => a.data_referencia.localeCompare(b.data_referencia));
-  const lastQ = sortedByDate[sortedByDate.length - 1];
-  const lastForCompany = empresa === "ALL"
-    ? null
-    : sortedByDate.filter(r => r.empresa_nome === empresa).slice(-1)[0];
-  const cur = lastForCompany ?? lastQ;
+  const sortedByDate = useMemo(() => [...filtered].sort((a, b) => a.data_referencia.localeCompare(b.data_referencia)), [filtered]);
+  const cur = useMemo(() => {
+    const lastQ = sortedByDate[sortedByDate.length - 1];
+    const lastForCompany = empresa === "ALL" ? null : sortedByDate.filter(r => r.empresa_nome === empresa).slice(-1)[0];
+    return lastForCompany ?? lastQ ?? null;
+  }, [sortedByDate, empresa]);
 
   // Receita & EBITDA evolution per quarter — for selected company or all aggregated
   const revenueSeries = useMemo(() => {
-    const rows = filtered.filter(r => r.receita_liquida != null || r.ebitda != null);
-    const map = new Map<string, { periodo: string; receita: number; ebitda: number; n: number }>();
-    rows.forEach(r => {
-      const cur = map.get(r.periodo) ?? { periodo: r.periodo, receita: 0, ebitda: 0, n: 0 };
-      cur.receita += r.receita_liquida ?? 0;
-      cur.ebitda += r.ebitda ?? 0;
-      cur.n += 1;
-      map.set(r.periodo, cur);
-    });
-    return Array.from(map.values()).sort((a, b) => a.periodo.localeCompare(b.periodo));
+    try {
+      const rows = filtered.filter(r => r.receita_liquida != null || r.ebitda != null);
+      const map = new Map<string, { periodo: string; receita: number; ebitda: number; n: number }>();
+      rows.forEach(r => {
+        const c = map.get(r.periodo) ?? { periodo: r.periodo, receita: 0, ebitda: 0, n: 0 };
+        c.receita += Number(r.receita_liquida) || 0;
+        c.ebitda += Number(r.ebitda) || 0;
+        c.n += 1;
+        map.set(r.periodo, c);
+      });
+      return Array.from(map.values()).sort((a, b) => a.periodo.localeCompare(b.periodo));
+    } catch (e) { console.error(e); return []; }
   }, [filtered]);
 
   // Margins by shock — average across companies grouped by shock
   const marginsByShock = useMemo(() => {
-    const groups = new Map<string, { n: number; ebitda: number; liq: number }>();
-    filtered.forEach(r => {
-      const g = groups.get(r.choque_periodo) ?? { n: 0, ebitda: 0, liq: 0 };
-      if (r.margem_ebitda_pct != null) { g.ebitda += r.margem_ebitda_pct; g.n += 1; }
-      if (r.margem_liquida_pct != null) { g.liq += r.margem_liquida_pct; }
-      groups.set(r.choque_periodo, g);
-    });
-    return Array.from(groups.entries()).map(([k, v]) => ({
-      choque: SHOCK_LABEL[k] ?? k,
-      margem_ebitda: v.n ? v.ebitda / v.n : 0,
-      margem_liquida: v.n ? v.liq / v.n : 0,
-    }));
+    try {
+      const groups = new Map<string, { n: number; ebitda: number; liq: number; nLiq: number }>();
+      filtered.forEach(r => {
+        const g = groups.get(r.choque_periodo) ?? { n: 0, ebitda: 0, liq: 0, nLiq: 0 };
+        if (r.margem_ebitda_pct != null && !isNaN(Number(r.margem_ebitda_pct))) { g.ebitda += Number(r.margem_ebitda_pct); g.n += 1; }
+        if (r.margem_liquida_pct != null && !isNaN(Number(r.margem_liquida_pct))) { g.liq += Number(r.margem_liquida_pct); g.nLiq += 1; }
+        groups.set(r.choque_periodo, g);
+      });
+      return Array.from(groups.entries()).map(([k, v]) => ({
+        choque: SHOCK_LABEL[k] ?? k,
+        margem_ebitda: v.n ? v.ebitda / v.n : 0,
+        margem_liquida: v.nLiq ? v.liq / v.nLiq : 0,
+      }));
+    } catch (e) { console.error(e); return []; }
   }, [filtered]);
 
-  // ROE/ROA by company — average over filtered period
+  // ROE/ROA by company
   const roeRoaByCompany = useMemo(() => {
-    const groups = new Map<string, { n: number; roe: number; roa: number }>();
-    filtered.forEach(r => {
-      const g = groups.get(r.empresa_nome) ?? { n: 0, roe: 0, roa: 0 };
-      if (r.roe_pct != null) g.roe += r.roe_pct;
-      if (r.roa_pct != null) g.roa += r.roa_pct;
-      g.n += 1;
-      groups.set(r.empresa_nome, g);
-    });
-    return Array.from(groups.entries()).map(([nome, g]) => ({
-      empresa: nome.split(" ")[0],
-      roe: g.n ? g.roe / g.n : 0,
-      roa: g.n ? g.roa / g.n : 0,
-    })).sort((a, b) => b.roe - a.roe);
+    try {
+      const groups = new Map<string, { n: number; roe: number; roa: number }>();
+      filtered.forEach(r => {
+        const g = groups.get(r.empresa_nome) ?? { n: 0, roe: 0, roa: 0 };
+        if (r.roe_pct != null && !isNaN(Number(r.roe_pct))) g.roe += Number(r.roe_pct);
+        if (r.roa_pct != null && !isNaN(Number(r.roa_pct))) g.roa += Number(r.roa_pct);
+        g.n += 1;
+        groups.set(r.empresa_nome, g);
+      });
+      return Array.from(groups.entries()).map(([nome, g]) => ({
+        empresa: nome.split(" ")[0],
+        roe: g.n ? g.roe / g.n : 0,
+        roa: g.n ? g.roa / g.n : 0,
+      })).sort((a, b) => b.roe - a.roe);
+    } catch (e) { console.error(e); return []; }
   }, [filtered]);
 
   // Scatter EBITDA vs Divida_Liquida
   const scatterData = useMemo(() => {
-    const map = new Map<string, { empresa: string; setor: string; ebitda: number; divida: number; n: number }>();
-    filtered.forEach(r => {
-      if (r.ebitda == null || r.divida_liquida == null) return;
-      const cur = map.get(r.empresa_nome) ?? { empresa: r.empresa_nome, setor: r.setor, ebitda: 0, divida: 0, n: 0 };
-      cur.ebitda += r.ebitda; cur.divida += r.divida_liquida; cur.n += 1;
-      map.set(r.empresa_nome, cur);
-    });
-    return Array.from(map.values()).map(v => ({
-      empresa: v.empresa, setor: v.setor,
-      ebitda: v.n ? v.ebitda / v.n / 1000 : 0,   // R$ milhões
-      divida: v.n ? v.divida / v.n / 1000 : 0,
-    }));
+    try {
+      const map = new Map<string, { empresa: string; setor: string; ebitda: number; divida: number; n: number }>();
+      filtered.forEach(r => {
+        if (r.ebitda == null || r.divida_liquida == null) return;
+        const eb = Number(r.ebitda), dv = Number(r.divida_liquida);
+        if (isNaN(eb) || isNaN(dv)) return;
+        const c = map.get(r.empresa_nome) ?? { empresa: r.empresa_nome, setor: r.setor, ebitda: 0, divida: 0, n: 0 };
+        c.ebitda += eb; c.divida += dv; c.n += 1;
+        map.set(r.empresa_nome, c);
+      });
+      return Array.from(map.values()).map(v => ({
+        empresa: v.empresa, setor: v.setor,
+        ebitda: v.n ? v.ebitda / v.n / 1000 : 0,
+        divida: v.n ? v.divida / v.n / 1000 : 0,
+      }));
+    } catch (e) { console.error(e); return []; }
   }, [filtered]);
 
   const bySector = useMemo(() => {
@@ -118,6 +126,8 @@ function Page() {
     });
     return Array.from(map.entries());
   }, [scatterData]);
+
+  if (!data) return <Loading />;
 
   return (
     <div className="pb-16">
@@ -147,87 +157,104 @@ function Page() {
         <Panel title="Receita Líquida e EBITDA — Evolução Trimestral"
           subtitle={empresa === "ALL" ? "Soma trimestral de todas as empresas filtradas." : `Empresa selecionada: ${empresa}`}>
           <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={revenueSeries} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                <XAxis dataKey="periodo" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={3} />
-                <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}B`} />
-                <Tooltip content={<ChartTooltip formatter={(v) => `R$ ${fmtNum(v / 1000, 0)} M`} />} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="receita" name="Receita Líquida" stroke="#FF6B35" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="ebitda" name="EBITDA" stroke="#00D4AA" strokeWidth={2.5} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              {hasData(revenueSeries) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={revenueSeries} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+                    <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                    <XAxis dataKey="periodo" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={3} />
+                    <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}B`} />
+                    <Tooltip content={<ChartTooltip formatter={(v) => `R$ ${fmtNum(v / 1000, 0)} M`} />} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="receita" name="Receita Líquida" stroke="#FF6B35" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="ebitda" name="EBITDA" stroke="#00D4AA" strokeWidth={2.5} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : <NoData />}
+            </ErrorBoundary>
           </div>
         </Panel>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Panel title="Margem EBITDA % e Margem Líquida % por Choque" subtitle="Média entre as empresas filtradas.">
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={marginsByShock} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>
-                  <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                  <XAxis dataKey="choque" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} />
-                  <YAxis unit="%" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                  <Tooltip content={<ChartTooltip formatter={(v) => fmtPct(v)} />} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="margem_ebitda" name="Margem EBITDA" fill="#FF6B35" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="margem_liquida" name="Margem Líquida" fill="#00D4AA" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <ErrorBoundary>
+                {hasData(marginsByShock) ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={marginsByShock} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>
+                      <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                      <XAxis dataKey="choque" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} />
+                      <YAxis unit="%" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                      <Tooltip content={<ChartTooltip formatter={(v) => fmtPct(v)} />} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="margem_ebitda" name="Margem EBITDA" fill="#FF6B35" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="margem_liquida" name="Margem Líquida" fill="#00D4AA" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <NoData />}
+              </ErrorBoundary>
             </div>
           </Panel>
 
           <Panel title="ROE % e ROA % por Empresa" subtitle="Média no período selecionado.">
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={roeRoaByCompany} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>
-                  <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                  <XAxis dataKey="empresa" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} angle={-25} textAnchor="end" height={60} />
-                  <YAxis unit="%" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                  <Tooltip content={<ChartTooltip formatter={(v) => fmtPct(v)} />} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="roe" name="ROE" fill="#FF6B35" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="roa" name="ROA" fill="#00D4AA" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <ErrorBoundary>
+                {hasData(roeRoaByCompany) ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={roeRoaByCompany} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>
+                      <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                      <XAxis dataKey="empresa" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} angle={-25} textAnchor="end" height={60} />
+                      <YAxis unit="%" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                      <Tooltip content={<ChartTooltip formatter={(v) => fmtPct(v)} />} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="roe" name="ROE" fill="#FF6B35" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="roa" name="ROA" fill="#00D4AA" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <NoData />}
+              </ErrorBoundary>
             </div>
           </Panel>
         </div>
 
         <Panel title="EBITDA × Dívida Líquida (médias por empresa)" subtitle="Cor por setor. Cada ponto representa uma empresa.">
           <div className="h-[360px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                <XAxis dataKey="ebitda" name="EBITDA (R$ mi)" type="number"
-                  tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
-                  label={{ value: "EBITDA médio (R$ milhões)", fill: "var(--color-muted-foreground)", fontSize: 11, position: "insideBottom", offset: -2 }} />
-                <YAxis dataKey="divida" name="Dívida Líquida (R$ mi)" type="number"
-                  tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                <ZAxis dataKey="empresa" range={[120, 120]} />
-                <Tooltip cursor={{ strokeDasharray: "3 3" }}
-                  content={({ active, payload }: any) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0].payload;
-                    return (
-                      <div className="bg-[oklch(0.18_0.04_250/0.95)] border border-border/60 rounded-md px-3 py-2 text-xs">
-                        <div className="font-semibold">{d.empresa}</div>
-                        <div className="text-muted-foreground">{d.setor}</div>
-                        <div>EBITDA: R$ {fmtNum(d.ebitda, 0)} mi</div>
-                        <div>Dívida Líq.: R$ {fmtNum(d.divida, 0)} mi</div>
-                      </div>
-                    );
-                  }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                {bySector.map(([sector, points]) => (
-                  <Scatter key={sector} name={sector} data={points} fill={SECTOR_HEX[sector] ?? "#888"} />
-                ))}
-              </ScatterChart>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              {hasData(scatterData) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+                    <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                    <XAxis dataKey="ebitda" name="EBITDA (R$ mi)" type="number"
+                      tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+                      label={{ value: "EBITDA médio (R$ milhões)", fill: "var(--color-muted-foreground)", fontSize: 11, position: "insideBottom", offset: -2 }} />
+                    <YAxis dataKey="divida" name="Dívida Líquida (R$ mi)" type="number"
+                      tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                    <ZAxis dataKey="empresa" range={[120, 120]} />
+                    <Tooltip cursor={{ strokeDasharray: "3 3" }}
+                      content={({ active, payload }: any) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0].payload;
+                        return (
+                          <div className="bg-[oklch(0.18_0.04_250/0.95)] border border-border/60 rounded-md px-3 py-2 text-xs">
+                            <div className="font-semibold">{d.empresa}</div>
+                            <div className="text-muted-foreground">{d.setor}</div>
+                            <div>EBITDA: R$ {fmtNum(d.ebitda, 0)} mi</div>
+                            <div>Dívida Líq.: R$ {fmtNum(d.divida, 0)} mi</div>
+                          </div>
+                        );
+                      }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {bySector.map(([sector, points]) => (
+                      <Scatter key={sector} name={sector} data={points} fill={SECTOR_HEX[sector] ?? "#888"} />
+                    ))}
+                  </ScatterChart>
+                </ResponsiveContainer>
+              ) : <NoData />}
+            </ErrorBoundary>
           </div>
         </Panel>
       </div>
+
     </div>
   );
 }
