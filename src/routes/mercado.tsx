@@ -239,32 +239,36 @@ function Page() {
 
         <Panel title="P/L × EV/EBITDA — Por Setor" subtitle="Médias por empresa, coloridas pelo setor.">
           <div className="h-[340px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 16, bottom: 8, left: 0 }}>
-                <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                <XAxis dataKey="pl" name="P/L" type="number" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
-                  label={{ value: "P/L", fill: "var(--color-muted-foreground)", fontSize: 11, position: "insideBottom", offset: -2 }} />
-                <YAxis dataKey="ev" name="EV/EBITDA" type="number" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                <ZAxis range={[120, 120]} />
-                <Tooltip cursor={{ strokeDasharray: "3 3" }}
-                  content={({ active, payload }: any) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0].payload;
-                    return (
-                      <div className="bg-[oklch(0.18_0.04_250/0.95)] border border-border/60 rounded-md px-3 py-2 text-xs">
-                        <div className="font-semibold">{d.empresa}</div>
-                        <div className="text-muted-foreground">{d.setor}</div>
-                        <div>P/L: {fmtNum(d.pl, 1)}x</div>
-                        <div>EV/EBITDA: {fmtNum(d.ev, 1)}x</div>
-                      </div>
-                    );
-                  }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                {scatterValuation.map(([s, pts]) => (
-                  <Scatter key={s} name={s} data={pts} fill={SECTOR_HEX[s] ?? "#888"} />
-                ))}
-              </ScatterChart>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              {hasData(scatterValuation) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 10, right: 16, bottom: 8, left: 0 }}>
+                    <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                    <XAxis dataKey="pl" name="P/L" type="number" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+                      label={{ value: "P/L", fill: "var(--color-muted-foreground)", fontSize: 11, position: "insideBottom", offset: -2 }} />
+                    <YAxis dataKey="ev" name="EV/EBITDA" type="number" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                    <ZAxis range={[120, 120]} />
+                    <Tooltip cursor={{ strokeDasharray: "3 3" }}
+                      content={({ active, payload }: any) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0].payload;
+                        return (
+                          <div className="bg-[oklch(0.18_0.04_250/0.95)] border border-border/60 rounded-md px-3 py-2 text-xs">
+                            <div className="font-semibold">{d.empresa}</div>
+                            <div className="text-muted-foreground">{d.setor}</div>
+                            <div>P/L: {fmtNum(d.pl, 1)}x</div>
+                            <div>EV/EBITDA: {fmtNum(d.ev, 1)}x</div>
+                          </div>
+                        );
+                      }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {scatterValuation.map(([s, pts]) => (
+                      <Scatter key={s} name={s} data={pts} fill={SECTOR_HEX[s] ?? "#888"} />
+                    ))}
+                  </ScatterChart>
+                </ResponsiveContainer>
+              ) : <NoData />}
+            </ErrorBoundary>
           </div>
         </Panel>
 
