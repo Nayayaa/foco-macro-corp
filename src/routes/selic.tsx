@@ -263,29 +263,33 @@ function Page() {
 
         <Panel title="Heatmap: Dívida / EBITDA por Empresa × Choque" subtitle="Verde = baixa alavancagem · Vermelho = alta alavancagem.">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-muted-foreground">
-                  <th className="text-left py-2 px-2 font-medium">Empresa</th>
-                  {shocks.map(s => <th key={s} className="text-center px-2 py-2 font-medium">{SHOCK_LABEL[s]}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {heat.map(r => (
-                  <tr key={r.empresa} className="border-t border-border/40">
-                    <td className="py-2 px-2 text-foreground">{r.empresa}</td>
-                    {r.cells.map((v, i) => (
-                      <td key={i} className="text-center py-1 px-2">
-                        <div className="rounded px-2 py-1.5 font-mono text-[11px]"
-                          style={{ background: heatColor(v), color: v != null && (v - heatMin) / (heatMax - heatMin) > 0.55 ? "#0a1628" : "#fff" }}>
-                          {v != null ? fmtNum(v, 2) + "x" : "—"}
-                        </div>
-                      </td>
+            <ErrorBoundary>
+              {hasData(heat) ? (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-muted-foreground">
+                      <th className="text-left py-2 px-2 font-medium">Empresa</th>
+                      {shocks.map(s => <th key={s} className="text-center px-2 py-2 font-medium">{SHOCK_LABEL[s]}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {heat.map(r => (
+                      <tr key={r.empresa} className="border-t border-border/40">
+                        <td className="py-2 px-2 text-foreground">{r.empresa}</td>
+                        {r.cells.map((v, i) => (
+                          <td key={i} className="text-center py-1 px-2">
+                            <div className="rounded px-2 py-1.5 font-mono text-[11px]"
+                              style={{ background: heatColor(v), color: v != null && (v - heatMin) / (heatMax - heatMin) > 0.55 ? "#0a1628" : "#fff" }}>
+                              {v != null ? fmtNum(v, 2) + "x" : "—"}
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  </tbody>
+                </table>
+              ) : <NoData />}
+            </ErrorBoundary>
           </div>
         </Panel>
       </div>
