@@ -183,33 +183,58 @@ function Page() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Panel title="Selic × Dívida / EBITDA — Por Empresa-Trimestre" subtitle="Cor por choque macroeconômico.">
             <div className="h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 16, bottom: 8, left: 0 }}>
-                  <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                  <XAxis dataKey="x" name="Selic" type="number" unit="%"
-                    tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                  <YAxis dataKey="y" name="D/EBITDA" type="number"
-                    tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                  <ZAxis range={[40, 40]} />
-                  <Tooltip cursor={{ strokeDasharray: "3 3" }}
-                    content={({ active, payload }: any) => {
-                      if (!active || !payload?.length) return null;
-                      const d = payload[0].payload;
-                      return (
-                        <div className="bg-[oklch(0.18_0.04_250/0.95)] border border-border/60 rounded-md px-3 py-2 text-xs">
-                          <div className="font-semibold">{d.empresa}</div>
-                          <div className="text-muted-foreground">{d.periodo}</div>
-                          <div>Selic: {fmtPct(d.x)}</div>
-                          <div>D/EBITDA: {fmtNum(d.y, 2)}x</div>
-                        </div>
-                      );
-                    }} />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
-                  {scatterByShock.map(([sk, pts]) => (
-                    <Scatter key={sk} name={SHOCK_LABEL[sk] ?? sk} data={pts} fill={SHOCK_HEX[sk] ?? "#888"} fillOpacity={0.75} />
-                  ))}
-                </ScatterChart>
-              </ResponsiveContainer>
+              <ErrorBoundary>
+                {hasData(scatterByShock) ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 10, right: 16, bottom: 8, left: 0 }}>
+                      <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                      <XAxis dataKey="x" name="Selic" type="number" unit="%"
+                        tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                      <YAxis dataKey="y" name="D/EBITDA" type="number"
+                        tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                      <ZAxis range={[40, 40]} />
+                      <Tooltip cursor={{ strokeDasharray: "3 3" }}
+                        content={({ active, payload }: any) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0].payload;
+                          return (
+                            <div className="bg-[oklch(0.18_0.04_250/0.95)] border border-border/60 rounded-md px-3 py-2 text-xs">
+                              <div className="font-semibold">{d.empresa}</div>
+                              <div className="text-muted-foreground">{d.periodo}</div>
+                              <div>Selic: {fmtPct(d.x)}</div>
+                              <div>D/EBITDA: {fmtNum(d.y, 2)}x</div>
+                            </div>
+                          );
+                        }} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      {scatterByShock.map(([sk, pts]) => (
+                        <Scatter key={sk} name={SHOCK_LABEL[sk] ?? sk} data={pts} fill={SHOCK_HEX[sk] ?? "#888"} fillOpacity={0.75} />
+                      ))}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                ) : <NoData />}
+              </ErrorBoundary>
+            </div>
+          </Panel>
+
+          <Panel title="Spread ROIC – Selic por Regime de Juros" subtitle="Por empresa, agrupado por regime Selic.">
+            <div className="h-[320px]">
+              <ErrorBoundary>
+                {hasData(spreadByCompany) ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={spreadByCompany} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>
+                      <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                      <XAxis dataKey="empresa" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} angle={-25} textAnchor="end" height={60} />
+                      <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                      <Tooltip content={<ChartTooltip formatter={(v) => fmtNum(v, 1)} />} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Bar dataKey="Selic_Baixa_4a8pct" name={REGIME_LABEL.Selic_Baixa_4a8pct} fill="#00D4AA" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="Selic_Mod_8a13pct" name={REGIME_LABEL.Selic_Mod_8a13pct} fill="#F2C94C" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="Selic_Alta_acima_13pct" name={REGIME_LABEL.Selic_Alta_acima_13pct} fill="#E94B3C" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <NoData />}
+              </ErrorBoundary>
             </div>
           </Panel>
 
