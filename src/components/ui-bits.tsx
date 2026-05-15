@@ -1,4 +1,33 @@
-import type { ReactNode } from "react";
+import { Component, type ReactNode, type ErrorInfo } from "react";
+
+export class ErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error("Chart error:", error, info); }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground p-6">
+          Erro ao carregar este gráfico.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function NoData({ message = "Dados não disponíveis" }: { message?: string }) {
+  return (
+    <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground p-6">
+      {message}
+    </div>
+  );
+}
+
+export function hasData<T>(arr: T[] | null | undefined): arr is T[] {
+  return Array.isArray(arr) && arr.length > 0;
+}
+
 
 export function PageHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) {
   return (
