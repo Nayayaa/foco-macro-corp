@@ -253,7 +253,7 @@ function Page() {
             </ErrorBoundary>
           </div>
         </Panel>
-      </div>
+
 
         <Panel title="EBITDA × Dívida Líquida (médias por empresa)" subtitle="Cor por setor. Cada ponto representa uma empresa.">
           <div className="h-[360px]">
