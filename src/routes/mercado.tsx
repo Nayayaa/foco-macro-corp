@@ -7,7 +7,7 @@ import {
 import { useData } from "@/lib/useData";
 import { useFilters, inFilters } from "@/lib/filters";
 import { SECTOR_HEX, fmtNum } from "@/lib/data";
-import { PageHeader, Kpi, Panel, Loading, ChartTooltip } from "@/components/ui-bits";
+import { PageHeader, Kpi, Panel, Loading, ChartTooltip, ErrorBoundary, NoData, hasData } from "@/components/ui-bits";
 
 export const Route = createFileRoute("/mercado")({
   head: () => ({ meta: [
@@ -24,106 +24,124 @@ function Page() {
   const filters = useFilters();
   const [empresa, setEmpresa] = useState("ALL");
 
-  const all = data?.mercado ?? [];
+  const all = useMemo(() => data?.mercado ?? [], [data]);
   const empresas = useMemo(() => Array.from(new Set(all.map(r => r.empresa_nome))).filter(Boolean).sort(), [all]);
 
-  const rows = useMemo(() => all.filter(r => inFilters(r, filters)), [all, filters]);
+  // Drop rows where preco_fechamento or market_cap_bi are null/0
+  const cleanAll = useMemo(() => all.filter(r => {
+    const p = Number(r.preco_fechamento);
+    const c = Number(r.market_cap_bi);
+    return r.preco_fechamento != null && !isNaN(p) && p !== 0
+        && r.market_cap_bi != null && !isNaN(c) && c !== 0;
+  }), [all]);
 
-  if (!data) return <Loading />;
+  const rows = useMemo(() => {
+    try { return cleanAll.filter(r => inFilters(r, filters)); } catch (e) { console.error(e); return []; }
+  }, [cleanAll, filters]);
 
-  const cap = (n?: number | null) => n != null && !isNaN(n);
+  const cap = (n?: number | null) => n != null && !isNaN(Number(n));
   const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-  const avgCap = avg(rows.filter(r => cap(r.market_cap_bi)).map(r => r.market_cap_bi as number));
-  const avgPL = avg(rows.filter(r => cap(r.pl_ratio) && (r.pl_ratio as number) > 0 && (r.pl_ratio as number) < 200).map(r => r.pl_ratio as number));
-  const avgEV = avg(rows.filter(r => cap(r.ev_ebitda) && (r.ev_ebitda as number) > 0 && (r.ev_ebitda as number) < 100).map(r => r.ev_ebitda as number));
 
-  // Price evolution per company (selected) or per company line if ALL
+  const kpis = useMemo(() => {
+    try {
+      return {
+        avgCap: avg(rows.filter(r => cap(r.market_cap_bi)).map(r => Number(r.market_cap_bi))),
+        avgPL: avg(rows.filter(r => cap(r.pl_ratio) && Number(r.pl_ratio) > 0 && Number(r.pl_ratio) < 200).map(r => Number(r.pl_ratio))),
+        avgEV: avg(rows.filter(r => cap(r.ev_ebitda) && Number(r.ev_ebitda) > 0 && Number(r.ev_ebitda) < 100).map(r => Number(r.ev_ebitda))),
+      };
+    } catch (e) { console.error(e); return { avgCap: 0, avgPL: 0, avgEV: 0 }; }
+  }, [rows]);
+  const { avgCap, avgPL, avgEV } = kpis;
+
   const priceSeries = useMemo(() => {
-    if (empresa === "ALL") {
-      // Pivot: data_referencia × empresa
-      const map = new Map<string, Record<string, number | string>>();
-      rows.forEach(r => {
-        if (!cap(r.preco_fechamento)) return;
-        const cur = map.get(r.data_referencia) ?? { date: r.data_referencia };
-        cur[r.empresa_nome] = r.preco_fechamento as number;
-        map.set(r.data_referencia, cur);
-      });
-      return Array.from(map.values()).sort((a, b) => (a.date as string).localeCompare(b.date as string));
-    }
-    return rows.filter(r => r.empresa_nome === empresa && cap(r.preco_fechamento))
-      .map(r => ({ date: r.data_referencia, preco: r.preco_fechamento }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    try {
+      if (empresa === "ALL") {
+        const map = new Map<string, Record<string, number | string>>();
+        rows.forEach(r => {
+          const cur = map.get(r.data_referencia) ?? { date: r.data_referencia };
+          cur[r.empresa_nome] = Number(r.preco_fechamento);
+          map.set(r.data_referencia, cur);
+        });
+        return Array.from(map.values()).sort((a, b) => (a.date as string).localeCompare(b.date as string));
+      }
+      return rows.filter(r => r.empresa_nome === empresa)
+        .map(r => ({ date: r.data_referencia, preco: Number(r.preco_fechamento) }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    } catch (e) { console.error(e); return []; }
   }, [rows, empresa]);
 
-  // P/L vs EV/EBITDA per company (avg)
   const valuationByCompany = useMemo(() => {
-    const map = new Map<string, { empresa: string; pl: number; pn: number; ev: number; en: number }>();
-    rows.forEach(r => {
-      const cur = map.get(r.empresa_nome) ?? { empresa: r.empresa_nome, pl: 0, pn: 0, ev: 0, en: 0 };
-      if (cap(r.pl_ratio) && (r.pl_ratio as number) > 0 && (r.pl_ratio as number) < 200) { cur.pl += r.pl_ratio as number; cur.pn += 1; }
-      if (cap(r.ev_ebitda) && (r.ev_ebitda as number) > 0 && (r.ev_ebitda as number) < 100) { cur.ev += r.ev_ebitda as number; cur.en += 1; }
-      map.set(r.empresa_nome, cur);
-    });
-    return Array.from(map.values()).map(v => ({
-      empresa: v.empresa.split(" ")[0],
-      pl: v.pn ? v.pl / v.pn : 0,
-      ev: v.en ? v.ev / v.en : 0,
-    })).sort((a, b) => b.pl - a.pl);
-  }, [rows]);
-
-  // Market Cap total vs Câmbio over time
-  const capVsFx = useMemo(() => {
-    const map = new Map<string, { date: string; cap: number; fx: number; fxN: number }>();
-    rows.forEach(r => {
-      const cur = map.get(r.data_referencia) ?? { date: r.data_referencia, cap: 0, fx: 0, fxN: 0 };
-      if (cap(r.market_cap_bi)) cur.cap += r.market_cap_bi as number;
-      if (cap(r.cambio_brl_usd)) { cur.fx += r.cambio_brl_usd as number; cur.fxN += 1; }
-      map.set(r.data_referencia, cur);
-    });
-    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date))
-      .map(v => ({ date: v.date, cap: v.cap, fx: v.fxN ? v.fx / v.fxN : 0 }));
-  }, [rows]);
-
-  // Scatter PL vs EV by sector
-  const scatterValuation = useMemo(() => {
-    const map = new Map<string, { empresa: string; setor: string; pl: number; ev: number; pn: number; en: number }>();
-    rows.forEach(r => {
-      const cur = map.get(r.empresa_nome) ?? { empresa: r.empresa_nome, setor: r.setor, pl: 0, ev: 0, pn: 0, en: 0 };
-      if (cap(r.pl_ratio) && (r.pl_ratio as number) > 0 && (r.pl_ratio as number) < 200) { cur.pl += r.pl_ratio as number; cur.pn += 1; }
-      if (cap(r.ev_ebitda) && (r.ev_ebitda as number) > 0 && (r.ev_ebitda as number) < 100) { cur.ev += r.ev_ebitda as number; cur.en += 1; }
-      map.set(r.empresa_nome, cur);
-    });
-    const points = Array.from(map.values()).map(v => ({
-      empresa: v.empresa, setor: v.setor,
-      pl: v.pn ? v.pl / v.pn : 0,
-      ev: v.en ? v.ev / v.en : 0,
-    })).filter(p => p.pl > 0 && p.ev > 0);
-    const bySector = new Map<string, typeof points>();
-    points.forEach(p => {
-      const arr = bySector.get(p.setor) ?? [];
-      arr.push(p); bySector.set(p.setor, arr);
-    });
-    return Array.from(bySector.entries());
-  }, [rows]);
-
-  // Comparison table 2014, 2020, 2024
-  const compYears = [2014, 2020, 2024];
-  const compTable = useMemo(() => {
-    return empresas.map(emp => {
-      const cells = compYears.map(y => {
-        const subset = all.filter(r => r.empresa_nome === emp && r.ano === y);
-        const price = avg(subset.filter(r => cap(r.preco_fechamento)).map(r => r.preco_fechamento as number));
-        const c = avg(subset.filter(r => cap(r.market_cap_bi)).map(r => r.market_cap_bi as number));
-        const pl = avg(subset.filter(r => cap(r.pl_ratio) && (r.pl_ratio as number) > 0 && (r.pl_ratio as number) < 200).map(r => r.pl_ratio as number));
-        const ev = avg(subset.filter(r => cap(r.ev_ebitda) && (r.ev_ebitda as number) > 0 && (r.ev_ebitda as number) < 100).map(r => r.ev_ebitda as number));
-        return { y, price, c, pl, ev };
+    try {
+      const map = new Map<string, { empresa: string; pl: number; pn: number; ev: number; en: number }>();
+      rows.forEach(r => {
+        const cur = map.get(r.empresa_nome) ?? { empresa: r.empresa_nome, pl: 0, pn: 0, ev: 0, en: 0 };
+        if (cap(r.pl_ratio) && Number(r.pl_ratio) > 0 && Number(r.pl_ratio) < 200) { cur.pl += Number(r.pl_ratio); cur.pn += 1; }
+        if (cap(r.ev_ebitda) && Number(r.ev_ebitda) > 0 && Number(r.ev_ebitda) < 100) { cur.ev += Number(r.ev_ebitda); cur.en += 1; }
+        map.set(r.empresa_nome, cur);
       });
-      return { empresa: emp, cells };
-    });
-  }, [all, empresas]);
+      return Array.from(map.values()).map(v => ({
+        empresa: v.empresa.split(" ")[0],
+        pl: v.pn ? v.pl / v.pn : 0,
+        ev: v.en ? v.ev / v.en : 0,
+      })).sort((a, b) => b.pl - a.pl);
+    } catch (e) { console.error(e); return []; }
+  }, [rows]);
 
-  // Color for line per company
-  const COMPANY_COLORS = ["#FF6B35", "#00D4AA", "#F2C94C", "#9B5DE5", "#56CCF2", "#E94B3C", "#6FCF97", "#F2994A", "#BB6BD9"];
+  const capVsFx = useMemo(() => {
+    try {
+      const map = new Map<string, { date: string; cap: number; fx: number; fxN: number }>();
+      rows.forEach(r => {
+        const cur = map.get(r.data_referencia) ?? { date: r.data_referencia, cap: 0, fx: 0, fxN: 0 };
+        if (cap(r.market_cap_bi)) cur.cap += Number(r.market_cap_bi);
+        if (cap(r.cambio_brl_usd)) { cur.fx += Number(r.cambio_brl_usd); cur.fxN += 1; }
+        map.set(r.data_referencia, cur);
+      });
+      return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date))
+        .map(v => ({ date: v.date, cap: v.cap, fx: v.fxN ? v.fx / v.fxN : 0 }));
+    } catch (e) { console.error(e); return []; }
+  }, [rows]);
+
+  const scatterValuation = useMemo(() => {
+    try {
+      const map = new Map<string, { empresa: string; setor: string; pl: number; ev: number; pn: number; en: number }>();
+      rows.forEach(r => {
+        const cur = map.get(r.empresa_nome) ?? { empresa: r.empresa_nome, setor: r.setor, pl: 0, ev: 0, pn: 0, en: 0 };
+        if (cap(r.pl_ratio) && Number(r.pl_ratio) > 0 && Number(r.pl_ratio) < 200) { cur.pl += Number(r.pl_ratio); cur.pn += 1; }
+        if (cap(r.ev_ebitda) && Number(r.ev_ebitda) > 0 && Number(r.ev_ebitda) < 100) { cur.ev += Number(r.ev_ebitda); cur.en += 1; }
+        map.set(r.empresa_nome, cur);
+      });
+      const points = Array.from(map.values()).map(v => ({
+        empresa: v.empresa, setor: v.setor,
+        pl: v.pn ? v.pl / v.pn : 0,
+        ev: v.en ? v.ev / v.en : 0,
+      })).filter(p => p.pl > 0 && p.ev > 0);
+      const bySector = new Map<string, typeof points>();
+      points.forEach(p => {
+        const arr = bySector.get(p.setor) ?? [];
+        arr.push(p); bySector.set(p.setor, arr);
+      });
+      return Array.from(bySector.entries());
+    } catch (e) { console.error(e); return []; }
+  }, [rows]);
+
+  const compYears = useMemo(() => [2014, 2020, 2024], []);
+  const compTable = useMemo(() => {
+    try {
+      return empresas.map(emp => {
+        const cells = compYears.map(y => {
+          const subset = cleanAll.filter(r => r.empresa_nome === emp && r.ano === y);
+          const price = avg(subset.filter(r => cap(r.preco_fechamento)).map(r => Number(r.preco_fechamento)));
+          const c = avg(subset.filter(r => cap(r.market_cap_bi)).map(r => Number(r.market_cap_bi)));
+          const pl = avg(subset.filter(r => cap(r.pl_ratio) && Number(r.pl_ratio) > 0 && Number(r.pl_ratio) < 200).map(r => Number(r.pl_ratio)));
+          const ev = avg(subset.filter(r => cap(r.ev_ebitda) && Number(r.ev_ebitda) > 0 && Number(r.ev_ebitda) < 100).map(r => Number(r.ev_ebitda)));
+          return { y, price, c, pl, ev };
+        });
+        return { empresa: emp, cells };
+      });
+    } catch (e) { console.error(e); return []; }
+  }, [cleanAll, empresas, compYears]);
+
+  if (!data) return <Loading />;
 
   return (
     <div className="pb-16">
