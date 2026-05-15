@@ -197,34 +197,42 @@ function Page() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Panel title="P/L e EV / EBITDA — Comparativo" subtitle="Médias por empresa no período.">
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={valuationByCompany} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>
-                  <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                  <XAxis dataKey="empresa" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} angle={-25} textAnchor="end" height={60} />
-                  <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                  <Tooltip content={<ChartTooltip formatter={(v) => fmtNum(v, 1) + "x"} />} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="pl" name="P/L" fill="#FF6B35" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="ev" name="EV / EBITDA" fill="#00D4AA" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <ErrorBoundary>
+                {hasData(valuationByCompany) ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={valuationByCompany} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>
+                      <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                      <XAxis dataKey="empresa" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} angle={-25} textAnchor="end" height={60} />
+                      <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                      <Tooltip content={<ChartTooltip formatter={(v) => fmtNum(v, 1) + "x"} />} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="pl" name="P/L" fill="#FF6B35" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="ev" name="EV / EBITDA" fill="#00D4AA" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <NoData />}
+              </ErrorBoundary>
             </div>
           </Panel>
 
           <Panel title="Market Cap Agregado vs Câmbio BRL/USD" subtitle="Capitalização total (esquerda) e câmbio (direita).">
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={capVsFx} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-                  <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                  <XAxis dataKey="date" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={11} />
-                  <YAxis yAxisId="L" orientation="left" tick={{ fill: "#FF6B35", fontSize: 11 }} tickFormatter={(v) => `${(v).toFixed(0)}b`} />
-                  <YAxis yAxisId="R" orientation="right" tick={{ fill: "#00D4AA", fontSize: 11 }} />
-                  <Tooltip content={<ChartTooltip formatter={(v, n) => n.includes("Câmbio") ? `R$ ${fmtNum(v, 2)}` : `R$ ${fmtNum(v, 1)} bi`} />} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Line yAxisId="L" type="monotone" dataKey="cap" name="Market Cap (R$ bi)" stroke="#FF6B35" strokeWidth={2.5} dot={false} />
-                  <Line yAxisId="R" type="monotone" dataKey="fx" name="Câmbio BRL/USD" stroke="#00D4AA" strokeWidth={2.5} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
+              <ErrorBoundary>
+                {hasData(capVsFx) ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={capVsFx} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+                      <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                      <XAxis dataKey="date" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={11} />
+                      <YAxis yAxisId="L" orientation="left" tick={{ fill: "#FF6B35", fontSize: 11 }} tickFormatter={(v) => `${(v).toFixed(0)}b`} />
+                      <YAxis yAxisId="R" orientation="right" tick={{ fill: "#00D4AA", fontSize: 11 }} />
+                      <Tooltip content={<ChartTooltip formatter={(v, n) => n.includes("Câmbio") ? `R$ ${fmtNum(v, 2)}` : `R$ ${fmtNum(v, 1)} bi`} />} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line yAxisId="L" type="monotone" dataKey="cap" name="Market Cap (R$ bi)" stroke="#FF6B35" strokeWidth={2.5} dot={false} />
+                      <Line yAxisId="R" type="monotone" dataKey="fx" name="Câmbio BRL/USD" stroke="#00D4AA" strokeWidth={2.5} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : <NoData />}
+              </ErrorBoundary>
             </div>
           </Panel>
         </div>
