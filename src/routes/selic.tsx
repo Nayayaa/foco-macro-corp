@@ -161,18 +161,22 @@ function Page() {
         <Panel title="Selic vs Dívida / EBITDA — Eixos Duplos"
           subtitle="Selic em laranja (esquerda); D/EBITDA em verde (direita).">
           <div className="h-[340px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={series} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
-                <XAxis dataKey="periodo" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={3} />
-                <YAxis yAxisId="L" orientation="left" unit="%" tick={{ fill: "#FF6B35", fontSize: 11 }} />
-                <YAxis yAxisId="R" orientation="right" tick={{ fill: "#00D4AA", fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip formatter={(v, name) => name.includes("Selic") ? fmtPct(v) : fmtNum(v, 2) + "x"} />} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line yAxisId="L" type="monotone" dataKey="selic" name="Selic Meta (%)" stroke="#FF6B35" strokeWidth={2.5} dot={false} />
-                <Line yAxisId="R" type="monotone" dataKey="de" name="Dívida / EBITDA (x)" stroke="#00D4AA" strokeWidth={2.5} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              {hasData(series) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={series} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+                    <CartesianGrid stroke="oklch(0.4 0.04 250 / 0.25)" strokeDasharray="2 4" />
+                    <XAxis dataKey="periodo" tick={{ fill: "var(--color-muted-foreground)", fontSize: 10 }} interval={3} />
+                    <YAxis yAxisId="L" orientation="left" unit="%" tick={{ fill: "#FF6B35", fontSize: 11 }} />
+                    <YAxis yAxisId="R" orientation="right" tick={{ fill: "#00D4AA", fontSize: 11 }} />
+                    <Tooltip content={<ChartTooltip formatter={(v, name) => name.includes("Selic") ? fmtPct(v) : fmtNum(v, 2) + "x"} />} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line yAxisId="L" type="monotone" dataKey="selic" name="Selic Meta (%)" stroke="#FF6B35" strokeWidth={2.5} dot={false} />
+                    <Line yAxisId="R" type="monotone" dataKey="de" name="Dívida / EBITDA (x)" stroke="#00D4AA" strokeWidth={2.5} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : <NoData />}
+            </ErrorBoundary>
           </div>
         </Panel>
 
