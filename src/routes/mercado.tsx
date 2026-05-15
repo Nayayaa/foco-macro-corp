@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ScatterChart, Scatter, ZAxis,
@@ -250,12 +250,12 @@ function Page() {
                 </tr>
                 <tr className="text-muted-foreground text-[10px]">
                   {compYears.map(y => (
-                    <>
-                      <th key={`${y}-p`} className="px-2 py-1 font-normal border-l border-border/40">Preço</th>
-                      <th key={`${y}-c`} className="px-2 py-1 font-normal">Cap (bi)</th>
-                      <th key={`${y}-l`} className="px-2 py-1 font-normal">P/L</th>
-                      <th key={`${y}-e`} className="px-2 py-1 font-normal">EV/EBITDA</th>
-                    </>
+                    <Fragment key={y}>
+                      <th className="px-2 py-1 font-normal border-l border-border/40">Preço</th>
+                      <th className="px-2 py-1 font-normal">Cap (bi)</th>
+                      <th className="px-2 py-1 font-normal">P/L</th>
+                      <th className="px-2 py-1 font-normal">EV/EBITDA</th>
+                    </Fragment>
                   ))}
                 </tr>
               </thead>
@@ -264,12 +264,12 @@ function Page() {
                   <tr key={r.empresa} className="border-t border-border/40">
                     <td className="py-2 px-3 text-foreground">{r.empresa}</td>
                     {r.cells.map((c, i) => (
-                      <>
-                        <td key={`${i}-p`} className="text-right px-2 py-2 font-mono text-foreground border-l border-border/40">{c.price ? `R$ ${fmtNum(c.price, 2)}` : "—"}</td>
-                        <td key={`${i}-c`} className="text-right px-2 py-2 font-mono text-foreground">{c.c ? fmtNum(c.c, 1) : "—"}</td>
-                        <td key={`${i}-l`} className="text-right px-2 py-2 font-mono text-foreground">{c.pl ? fmtNum(c.pl, 1) + "x" : "—"}</td>
-                        <td key={`${i}-e`} className="text-right px-2 py-2 font-mono text-foreground">{c.ev ? fmtNum(c.ev, 1) + "x" : "—"}</td>
-                      </>
+                      <Fragment key={i}>
+                        <td className="text-right px-2 py-2 font-mono text-foreground border-l border-border/40">{c.price ? `R$ ${fmtNum(c.price, 2)}` : "—"}</td>
+                        <td className="text-right px-2 py-2 font-mono text-foreground">{c.c ? fmtNum(c.c, 1) : "—"}</td>
+                        <td className="text-right px-2 py-2 font-mono text-foreground">{c.pl ? fmtNum(c.pl, 1) + "x" : "—"}</td>
+                        <td className="text-right px-2 py-2 font-mono text-foreground">{c.ev ? fmtNum(c.ev, 1) + "x" : "—"}</td>
+                      </Fragment>
                     ))}
                   </tr>
                 ))}
