@@ -274,43 +274,47 @@ function Page() {
 
         <Panel title="Indicadores de Mercado — 2014 vs 2020 vs 2024" subtitle="Preço médio, market cap, P/L e EV/EBITDA por empresa.">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-muted-foreground border-b border-border/60">
-                  <th rowSpan={2} className="text-left py-2 px-3 font-medium">Empresa</th>
-                  {compYears.map(y => (
-                    <th key={y} colSpan={4} className="text-center px-2 py-1.5 font-medium border-l border-border/40">
-                      {y === 2020 ? "2020 (Pandemia)" : y}
-                    </th>
-                  ))}
-                </tr>
-                <tr className="text-muted-foreground text-[10px]">
-                  {compYears.map(y => (
-                    <Fragment key={y}>
-                      <th className="px-2 py-1 font-normal border-l border-border/40">Preço</th>
-                      <th className="px-2 py-1 font-normal">Cap (bi)</th>
-                      <th className="px-2 py-1 font-normal">P/L</th>
-                      <th className="px-2 py-1 font-normal">EV/EBITDA</th>
-                    </Fragment>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {compTable.map(r => (
-                  <tr key={r.empresa} className="border-t border-border/40">
-                    <td className="py-2 px-3 text-foreground">{r.empresa}</td>
-                    {r.cells.map((c, i) => (
-                      <Fragment key={i}>
-                        <td className="text-right px-2 py-2 font-mono text-foreground border-l border-border/40">{c.price ? `R$ ${fmtNum(c.price, 2)}` : "—"}</td>
-                        <td className="text-right px-2 py-2 font-mono text-foreground">{c.c ? fmtNum(c.c, 1) : "—"}</td>
-                        <td className="text-right px-2 py-2 font-mono text-foreground">{c.pl ? fmtNum(c.pl, 1) + "x" : "—"}</td>
-                        <td className="text-right px-2 py-2 font-mono text-foreground">{c.ev ? fmtNum(c.ev, 1) + "x" : "—"}</td>
-                      </Fragment>
+            <ErrorBoundary>
+              {hasData(compTable) ? (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-muted-foreground border-b border-border/60">
+                      <th rowSpan={2} className="text-left py-2 px-3 font-medium">Empresa</th>
+                      {compYears.map(y => (
+                        <th key={y} colSpan={4} className="text-center px-2 py-1.5 font-medium border-l border-border/40">
+                          {y === 2020 ? "2020 (Pandemia)" : y}
+                        </th>
+                      ))}
+                    </tr>
+                    <tr className="text-muted-foreground text-[10px]">
+                      {compYears.map(y => (
+                        <Fragment key={y}>
+                          <th className="px-2 py-1 font-normal border-l border-border/40">Preço</th>
+                          <th className="px-2 py-1 font-normal">Cap (bi)</th>
+                          <th className="px-2 py-1 font-normal">P/L</th>
+                          <th className="px-2 py-1 font-normal">EV/EBITDA</th>
+                        </Fragment>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compTable.map(r => (
+                      <tr key={r.empresa} className="border-t border-border/40">
+                        <td className="py-2 px-3 text-foreground">{r.empresa}</td>
+                        {r.cells.map((c, i) => (
+                          <Fragment key={i}>
+                            <td className="text-right px-2 py-2 font-mono text-foreground border-l border-border/40">{c.price ? `R$ ${fmtNum(c.price, 2)}` : "—"}</td>
+                            <td className="text-right px-2 py-2 font-mono text-foreground">{c.c ? fmtNum(c.c, 1) : "—"}</td>
+                            <td className="text-right px-2 py-2 font-mono text-foreground">{c.pl ? fmtNum(c.pl, 1) + "x" : "—"}</td>
+                            <td className="text-right px-2 py-2 font-mono text-foreground">{c.ev ? fmtNum(c.ev, 1) + "x" : "—"}</td>
+                          </Fragment>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  </tbody>
+                </table>
+              ) : <NoData />}
+            </ErrorBoundary>
           </div>
         </Panel>
       </div>
